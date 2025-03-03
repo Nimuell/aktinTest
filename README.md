@@ -9,10 +9,6 @@
 ## Instalace a spuštění
 
 1. Naklonujte repozitář:
-```bash
-git clone <repository-url>
-cd <repository-name>
-```
 
 2. Spusťte aplikaci pomocí Dockeru:
 ```bash
