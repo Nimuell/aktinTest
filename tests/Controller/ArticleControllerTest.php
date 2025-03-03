@@ -14,6 +14,10 @@ class ArticleControllerTest extends WebTestCase
     private $client;
     private $entityManager;
     private $passwordHasher;
+    private $testArticle;
+    private $reader;
+    private $author;
+    private $admin;
 
     protected function setUp(): void
     {
@@ -24,149 +28,38 @@ class ArticleControllerTest extends WebTestCase
         // Vyčistíme databázi
         $this->entityManager->createQuery('DELETE FROM App\Entity\Article')->execute();
         $this->entityManager->createQuery('DELETE FROM App\Entity\User')->execute();
-    }
 
-    public function testReaderCannotCreateArticle(): void
-    {
-        // create reader
-        $user = new User();
-        $user->setEmail('reader@test.com')
-            ->setName('Reader')
-            ->setRole(UserRole::READER)
-            ->setPassword($this->passwordHasher->hashPassword($user, 'password'));
+        // Vytvoříme testovací uživatele
+        $this->reader = $this->createUser('reader@test.com', 'Reader', UserRole::READER);
+        $this->author = $this->createUser('author@test.com', 'Author', UserRole::AUTHOR);
+        $this->admin = $this->createUser('admin@test.com', 'Admin', UserRole::ADMIN);
 
-        $this->entityManager->persist($user);
-        $this->entityManager->flush();
-
-        // login
-        $this->client->request(
-            'POST',
-            '/auth/login',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'username' => 'reader@test.com',
-                'password' => 'password'
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $token = json_decode($response->getContent(), true)['token'];
-
-        // create article
-        $this->client->request(
-            'POST',
-            '/articles',
-            [],
-            [],
-            [
-                'CONTENT_TYPE' => 'application/json',
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
-            ],
-            json_encode([
-                'title' => 'Test Article',
-                'content' => 'Test Content'
-            ])
-        );
-
-        $this->assertEquals(403, $this->client->getResponse()->getStatusCode());
-    }
-
-    public function testAuthorCanCreateAndEditOwnArticle(): void
-    {
-        // create author
-        $user = new User();
-        $user->setEmail('author@test.com')
-            ->setName('Author')
-            ->setRole(UserRole::AUTHOR)
-            ->setPassword($this->passwordHasher->hashPassword($user, 'password'));
-
-        $this->entityManager->persist($user);
-        $this->entityManager->flush();
-
-        // login
-        $this->client->request(
-            'POST',
-            '/auth/login',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'username' => 'author@test.com',
-                'password' => 'password'
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $token = json_decode($response->getContent(), true)['token'];
-
-        // create article
-        $this->client->request(
-            'POST',
-            '/articles',
-            [],
-            [],
-            [
-                'CONTENT_TYPE' => 'application/json',
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
-            ],
-            json_encode([
-                'title' => 'Test Article',
-                'content' => 'Test Content'
-            ])
-        );
-
-        $this->assertEquals(201, $this->client->getResponse()->getStatusCode());
-        $articleData = json_decode($this->client->getResponse()->getContent(), true);
-
-        // modify article
-        $this->client->request(
-            'PUT',
-            '/articles/' . $articleData['id'],
-            [],
-            [],
-            [
-                'CONTENT_TYPE' => 'application/json',
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
-            ],
-            json_encode([
-                'title' => 'Updated Title'
-            ])
-        );
-
-        $this->assertEquals(200, $this->client->getResponse()->getStatusCode());
-        $this->assertEquals('Updated Title', json_decode($this->client->getResponse()->getContent(), true)['title']);
-    }
-
-    public function testAuthorCannotEditOthersArticle(): void
-    {
-        // create second author
-        $author1 = new User();
-        $author1->setEmail('author1@test.com')
-            ->setName('Author 1')
-            ->setRole(UserRole::AUTHOR)
-            ->setPassword($this->passwordHasher->hashPassword($author1, 'password'));
-
-        $author2 = new User();
-        $author2->setEmail('author2@test.com')
-            ->setName('Author 2')
-            ->setRole(UserRole::AUTHOR)
-            ->setPassword($this->passwordHasher->hashPassword($author2, 'password'));
-
-        $this->entityManager->persist($author1);
-        $this->entityManager->persist($author2);
-
-        // create article for author1
-        $article = new Article();
-        $article->setTitle('Test Article')
+        // Vytvoříme testovací článek
+        $this->testArticle = new Article();
+        $this->testArticle->setTitle('Test Article')
             ->setContent('Test Content')
-            ->setAuthor($author1);
+            ->setAuthor($this->author);
 
-        $this->entityManager->persist($article);
+        $this->entityManager->persist($this->testArticle);
+        $this->entityManager->flush();
+    }
+
+    private function createUser(string $email, string $name, UserRole $role): User
+    {
+        $user = new User();
+        $user->setEmail($email)
+            ->setName($name)
+            ->setRole($role)
+            ->setPassword($this->passwordHasher->hashPassword($user, 'password'));
+
+        $this->entityManager->persist($user);
         $this->entityManager->flush();
 
-        // login as author2
+        return $user;
+    }
+
+    private function getToken(string $email): string
+    {
         $this->client->request(
             'POST',
             '/auth/login',
@@ -174,18 +67,69 @@ class ArticleControllerTest extends WebTestCase
             [],
             ['CONTENT_TYPE' => 'application/json'],
             json_encode([
-                'username' => 'author2@test.com',
+                'email' => $email,
                 'password' => 'password'
             ])
         );
 
         $response = $this->client->getResponse();
-        $token = json_decode($response->getContent(), true)['token'];
+        return json_decode($response->getContent(), true)['token'];
+    }
 
-        // modify author1 article
+    public function testReaderCanReadArticles(): void
+    {
+        $token = $this->getToken('reader@test.com');
+
+        // Test GET /api/articles
+        $this->client->request(
+            'GET',
+            '/api/articles',
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ]
+        );
+        $this->assertEquals(200, $this->client->getResponse()->getStatusCode());
+
+        // Test GET /api/articles/{id}
+        $this->client->request(
+            'GET',
+            sprintf('/api/articles/%d', $this->testArticle->getId()),
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ]
+        );
+        $this->assertEquals(200, $this->client->getResponse()->getStatusCode());
+    }
+
+    public function testReaderCannotModifyArticles(): void
+    {
+        $token = $this->getToken('reader@test.com');
+
+        // Test POST /api/articles
+        $this->client->request(
+            'POST',
+            '/api/articles',
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ],
+            json_encode([
+                'title' => 'New Article',
+                'content' => 'Content'
+            ])
+        );
+        $this->assertEquals(403, $this->client->getResponse()->getStatusCode());
+
+        // Test PUT /api/articles/{id}
         $this->client->request(
             'PUT',
-            '/articles/' . $article->getId(),
+            sprintf('/api/articles/%d', $this->testArticle->getId()),
             [],
             [],
             [
@@ -196,7 +140,118 @@ class ArticleControllerTest extends WebTestCase
                 'title' => 'Updated Title'
             ])
         );
+        $this->assertEquals(403, $this->client->getResponse()->getStatusCode());
 
+        // Test DELETE /api/articles/{id}
+        $this->client->request(
+            'DELETE',
+            sprintf('/api/articles/%d', $this->testArticle->getId()),
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ]
+        );
         $this->assertEquals(403, $this->client->getResponse()->getStatusCode());
     }
-}
+
+    public function testAuthorCanManageOwnArticles(): void
+    {
+        $token = $this->getToken('author@test.com');
+
+        // Test POST /api/articles
+        $this->client->request(
+            'POST',
+            '/api/articles',
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ],
+            json_encode([
+                'title' => 'New Article',
+                'content' => 'Content'
+            ])
+        );
+        $this->assertEquals(201, $this->client->getResponse()->getStatusCode());
+
+        // Test PUT /api/articles/{id}
+        $this->client->request(
+            'PUT',
+            sprintf('/api/articles/%d', $this->testArticle->getId()),
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ],
+            json_encode([
+                'title' => 'Updated Title'
+            ])
+        );
+        $this->assertEquals(200, $this->client->getResponse()->getStatusCode());
+
+        // Test DELETE /api/articles/{id}
+        $this->client->request(
+            'DELETE',
+            sprintf('/api/articles/%d', $this->testArticle->getId()),
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ]
+        );
+        $this->assertEquals(204, $this->client->getResponse()->getStatusCode());
+    }
+
+    public function testAdminCanManageAllArticles(): void
+    {
+        $token = $this->getToken('admin@test.com');
+
+        // Test POST /api/articles
+        $this->client->request(
+            'POST',
+            '/api/articles',
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ],
+            json_encode([
+                'title' => 'Admin Article',
+                'content' => 'Content'
+            ])
+        );
+        $this->assertEquals(201, $this->client->getResponse()->getStatusCode());
+
+        // Test PUT /api/articles/{id}
+        $this->client->request(
+            'PUT',
+            sprintf('/api/articles/%d', $this->testArticle->getId()),
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ],
+            json_encode([
+                'title' => 'Admin Updated'
+            ])
+        );
+        $this->assertEquals(200, $this->client->getResponse()->getStatusCode());
+
+        // Test DELETE /api/articles/{id}
+        $this->client->request(
+            'DELETE',
+            sprintf('/api/articles/%d', $this->testArticle->getId()),
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $token
+            ]
+        );
+        $this->assertEquals(204, $this->client->getResponse()->getStatusCode());
+    }
+} 

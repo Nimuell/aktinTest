@@ -28,6 +28,9 @@ security:
             stateless: true
             jwt: ~
 
+    role_hierarchy:
+        ROLE_ADMIN: [ROLE_AUTHOR]
+
     access_control:
         - { path: ^/auth, roles: PUBLIC_ACCESS }
         - { path: ^/users, roles: ROLE_ADMIN }

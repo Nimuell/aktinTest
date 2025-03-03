@@ -76,6 +76,10 @@ class ArticleController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
 
+        if (!$this->isGranted('ROLE_AUTHOR') && !$this->isGranted('ROLE_ADMIN')) {
+            return $this->json(['message' => 'Access denied'], 403);
+        }
+
         $article = new Article();
         $article->setTitle($data['title'])
             ->setContent($data['content'])
@@ -110,7 +114,7 @@ class ArticleController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
         
-        if ($article->getAuthor()->getId() !== $user->getId() && $user->getRole() !== UserRole::ADMIN) {
+        if (!$this->isGranted('ROLE_ADMIN') && ($article->getAuthor()->getId() !== $user->getId() || !$this->isGranted('ROLE_AUTHOR'))) {
             return $this->json(['message' => 'Access denied'], 403);
         }
 
@@ -151,7 +155,7 @@ class ArticleController extends AbstractController
         /** @var User $user */
         $user = $this->getUser();
         
-        if ($article->getAuthor()->getId() !== $user->getId() && $user->getRole() !== UserRole::ADMIN) {
+        if (!$this->isGranted('ROLE_ADMIN') && ($article->getAuthor()->getId() !== $user->getId() || !$this->isGranted('ROLE_AUTHOR'))) {
             return $this->json(['message' => 'Access denied'], 403);
         }
 

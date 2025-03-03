@@ -1,5 +1,5 @@
 {
-    "name": "nimuell/aktintest",
+    "name": "vilain/rest-api",
     "type": "project",
     "license": "proprietary",
     "minimum-stability": "stable",
@@ -20,7 +20,8 @@
     "require-dev": {
         "symfony/maker-bundle": "^1.62",
         "symfony/phpunit-bridge": "^6.4",
-        "phpunit/phpunit": "^10.4"
+        "phpunit/phpunit": "^10.4",
+        "symfony/test-pack": "^1.0"
     },
     "config": {
         "allow-plugins": {
