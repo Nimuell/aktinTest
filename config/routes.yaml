@@ -1,0 +1,14 @@
+controllers:
+    resource:
+        path: ../src/Controller/
+        namespace: App\Controller
+    type: attribute
+
+auth_login:
+    path: /auth/login
+    methods: [POST]
+
+api_register:
+    path: /auth/register
+    controller: App\Controller\AuthController::register
+    methods: [POST] 
